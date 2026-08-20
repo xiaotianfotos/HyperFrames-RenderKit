@@ -1,0 +1,4 @@
+interface:
+  display_name: "HyperFrames Render Optimization"
+  short_description: "Check, render, preview, and optimize deterministic video"
+  default_prompt: "Use $hyperframes-render-optimization and run hf-render check first. Read its latest.json/latest.md issue report, preserve the authoring motion contract, fix blocking issues without flattening animation, then use hf-render run for the proven production route and verified output."
