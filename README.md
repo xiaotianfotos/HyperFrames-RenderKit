@@ -77,7 +77,7 @@ The packaged runtime is written to:
 $HF_ELECTRON_ROOT/src/out/Vaapi/dist.zip
 ```
 
-`apply-patches.sh` is idempotent and stops when the pinned source no longer matches. Do not force a patch onto a different Chromium revision. Do not mix the stable patches in `patches/*.patch` with the separate experimental patch stack in `patches/native/`.
+`apply-patches.sh` is idempotent and stops when the pinned source no longer matches. The public build has one production patch route in `patches/`; do not force it onto another Chromium revision or stack unrelated local changes on top.
 
 ## Install the renderer
 

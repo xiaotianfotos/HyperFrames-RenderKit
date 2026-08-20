@@ -1,0 +1,8 @@
+import("//electron/build/args/testing.gn")
+
+dcheck_always_on = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+use_vaapi = true
+use_remoteexec = false

@@ -1,0 +1,572 @@
+diff --git a/media/base/media_switches.cc b/media/base/media_switches.cc
+index 840180d9d5..80854ca42e 100644
+--- a/media/base/media_switches.cc
++++ b/media/base/media_switches.cc
+@@ -757,6 +757,10 @@ BASE_FEATURE(kAcceleratedVideoEncodeLinux,
+              "AcceleratedVideoEncoder",
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ 
++BASE_FEATURE(kLinuxVideoEncoderUseShmemInput,
++             "LinuxVideoEncoderUseShmemInput",
++             base::FEATURE_DISABLED_BY_DEFAULT);
++
+ // Ignore the non-intel driver blacklist for VaapiVideoDecoder implementations.
+ // Intended for manual usage only in order to gague the status of newer driver
+ // implementations.
+diff --git a/media/base/media_switches.h b/media/base/media_switches.h
+index 32286bf89f..72510be658 100644
+--- a/media/base/media_switches.h
++++ b/media/base/media_switches.h
+@@ -355,6 +355,7 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kMediaStreamAccurateDroppedFrameCount);
+ MEDIA_EXPORT BASE_DECLARE_FEATURE(kAcceleratedVideoDecodeLinux);
+ MEDIA_EXPORT BASE_DECLARE_FEATURE(kAcceleratedVideoDecodeLinuxGL);
+ MEDIA_EXPORT BASE_DECLARE_FEATURE(kAcceleratedVideoEncodeLinux);
++MEDIA_EXPORT BASE_DECLARE_FEATURE(kLinuxVideoEncoderUseShmemInput);
+ MEDIA_EXPORT BASE_DECLARE_FEATURE(kVaapiIgnoreDriverChecks);
+ #endif  // BUILDFLAG(IS_LINUX)
+ MEDIA_EXPORT BASE_DECLARE_FEATURE(kVaapiOnNvidiaGPUs);
+diff --git a/media/base/video_util.cc b/media/base/video_util.cc
+index 74df512803..b5e25f1071 100644
+--- a/media/base/video_util.cc
++++ b/media/base/video_util.cc
+@@ -579,10 +579,22 @@ scoped_refptr<VideoFrame> ConvertToMemoryMappedFrame(
+   for (size_t i = 0; i < num_planes; i++)
+     planes[i] = scoped_mapping->GetMemoryForPlane(i);
+ 
+-  auto mapped_frame = VideoFrame::WrapExternalYuvDataWithLayout(
+-      video_frame->layout(), video_frame->visible_rect(),
+-      video_frame->natural_size(), planes[0], planes[1], planes[2],
+-      video_frame->timestamp());
++  scoped_refptr<VideoFrame> mapped_frame;
++  const bool is_packed_rgb =
++      video_frame->format() == PIXEL_FORMAT_XBGR ||
++      video_frame->format() == PIXEL_FORMAT_XRGB ||
++      video_frame->format() == PIXEL_FORMAT_ABGR ||
++      video_frame->format() == PIXEL_FORMAT_ARGB;
++  if (is_packed_rgb) {
++    mapped_frame = VideoFrame::WrapExternalDataWithLayout(
++        video_frame->layout(), video_frame->visible_rect(),
++        video_frame->natural_size(), planes[0], video_frame->timestamp());
++  } else {
++    mapped_frame = VideoFrame::WrapExternalYuvDataWithLayout(
++        video_frame->layout(), video_frame->visible_rect(),
++        video_frame->natural_size(), planes[0], planes[1], planes[2],
++        video_frame->timestamp());
++  }
+ 
+   if (!mapped_frame) {
+     return nullptr;
+diff --git a/media/gpu/buffer_validation.cc b/media/gpu/buffer_validation.cc
+index 12473c7ae3..b1b1a1a228 100644
+--- a/media/gpu/buffer_validation.cc
++++ b/media/gpu/buffer_validation.cc
+@@ -66,7 +66,8 @@ bool VerifyGpuMemoryBufferHandle(
+   // YV12 is used by ARC++ on MTK8173. Consider removing it.
+   VideoPixelFormat kSupportedFormats[] = {
+       PIXEL_FORMAT_I420,   PIXEL_FORMAT_YV12, PIXEL_FORMAT_NV12,
+-      PIXEL_FORMAT_P010LE, PIXEL_FORMAT_ARGB, PIXEL_FORMAT_XR30};
++      PIXEL_FORMAT_P010LE, PIXEL_FORMAT_ARGB, PIXEL_FORMAT_ABGR,
++      PIXEL_FORMAT_XR30};
+   if (!std::ranges::contains(kSupportedFormats, pixel_format)) {
+     LOG(ERROR) << "Unsupported: " << pixel_format;
+     return false;
+diff --git a/media/gpu/vaapi/vaapi_video_encode_accelerator.cc b/media/gpu/vaapi/vaapi_video_encode_accelerator.cc
+index 44df9f5bd7..45228bdf95 100644
+--- a/media/gpu/vaapi/vaapi_video_encode_accelerator.cc
++++ b/media/gpu/vaapi/vaapi_video_encode_accelerator.cc
+@@ -129,6 +129,12 @@ class VaapiVideoEncodeAccelerator::ScopedVASurfaceWrapper {
+   ReleaseCB release_cb_;
+ };
+ 
++struct VaapiVideoEncodeAccelerator::InFlightEncode {
++  scoped_refptr<VideoFrame> input_frame;
++  std::vector<std::unique_ptr<EncodeJob>> jobs;
++  std::vector<std::unique_ptr<ScopedVASurfaceWrapper>> input_surfaces;
++};
++
+ // static
+ base::AtomicRefCount VaapiVideoEncodeAccelerator::num_instances_(0);
+ 
+@@ -603,10 +609,10 @@ bool VaapiVideoEncodeAccelerator::CreateSurfacesForMappableSIEncoding(
+   DCHECK(frame.HasMappableSharedImage());
+   TRACE_EVENT0("media,gpu", "VAVEA::CreateSurfacesForMappableSIEncoding");
+ 
+-  if (frame.format() != PIXEL_FORMAT_NV12) {
++  if (frame.format() != PIXEL_FORMAT_NV12 && frame.format() != PIXEL_FORMAT_ABGR) {
+     NotifyError(
+         {EncoderStatus::Codes::kUnsupportedFrameFormat,
+-         "Expected NV12, got: " + VideoPixelFormatToString(frame.format())});
++         "Expected NV12 or ABGR, got: " + VideoPixelFormatToString(frame.format())});
+     return false;
+   }
+ 
+@@ -663,7 +669,8 @@ bool VaapiVideoEncodeAccelerator::CreateSurfacesForMappableSIEncoding(
+                    "Only down scaling is supported in spatial layer encoding"});
+       return false;
+     }
+-    const bool engage_vpp = source_rect != gfx::Rect(encode_size);
++    const bool engage_vpp = frame.format() != PIXEL_FORMAT_NV12 ||
++                            source_rect != gfx::Rect(encode_size);
+     // Crop and scale |source_surface| to a surface whose size is |encode_size|.
+     // The size of a reconstructed surface is also |encode_size|.
+     CHECK(source_surface);
+@@ -933,6 +940,31 @@ void VaapiVideoEncodeAccelerator::EncodePendingInputs() {
+     VLOGF(1) << " Failed to get SVC layer resolutions";
+     return;
+   }
++  const size_t num_spatial_layers = spatial_layer_resolutions.size();
++
++  auto complete_oldest_encode = [&]() -> bool {
++    CHECK(!in_flight_encodes_.empty());
++    auto in_flight = std::move(in_flight_encodes_.front());
++    in_flight_encodes_.pop();
++    auto& jobs = in_flight->jobs;
++    CHECK_EQ(num_spatial_layers, jobs.size());
++    for (size_t i = 0; i < jobs.size(); ++i) {
++      std::optional<EncodeResult> result =
++          encoder_->GetEncodeResult(std::move(jobs[i]));
++      if (!result) {
++        NotifyError({EncoderStatus::Codes::kEncoderFailedEncode,
++                     "Failed getting encode result"});
++        return false;
++      }
++
++      TRACE_EVENT_END("media,gpu", /*"PlatformEncoding.Encode"*/
++                      perfetto::Track::FromPointer(&jobs[i]), "timestamp",
++                      result->metadata().timestamp.InMicroseconds(), "size",
++                      spatial_layer_resolutions[i].ToString());
++      pending_encode_results_.push(std::move(result));
++    }
++    return true;
++  };
+ 
+   TRACE_EVENT1("media,gpu", "VAVEA::EncodePendingInputs",
+                "pending input frames", input_queue_.size());
+@@ -944,9 +976,15 @@ void VaapiVideoEncodeAccelerator::EncodePendingInputs() {
+   // bitstream buffer is given and a pending frame is released thanks to
+   // the resumed encode.
+   while (state_ == kEncoding && !input_queue_.empty() &&
+-         pending_encode_results_.size() < max_pending_results_size_) {
++         pending_encode_results_.size() +
++                 in_flight_encodes_.size() * num_spatial_layers <
++             max_pending_results_size_) {
+     const InputFrameRef& input_frame = input_queue_.front();
+     if (!input_frame.frame) {
++      while (!in_flight_encodes_.empty()) {
++        if (!complete_oldest_encode())
++          return;
++      }
+       // If this is a flush (null) frame, don't create/submit a new encode
+       // result for it, but forward std::nulloptto the
+       // |pending_encode_results_| queue.
+@@ -958,7 +996,6 @@ void VaapiVideoEncodeAccelerator::EncodePendingInputs() {
+ 
+     TRACE_EVENT0("media,gpu",
+                  "VAVEA::EncodeOneInputFrameAndReturnEncodedChunks");
+-    const size_t num_spatial_layers = spatial_layer_resolutions.size();
+     std::vector<std::unique_ptr<ScopedVASurfaceWrapper>> input_surfaces;
+     std::vector<std::unique_ptr<ScopedVASurfaceWrapper>> reconstructed_surfaces;
+     if (native_input_mode_) {
+@@ -1008,21 +1045,21 @@ void VaapiVideoEncodeAccelerator::EncodePendingInputs() {
+         return;
+       }
+     }
+-    for (size_t i = 0; i < jobs.size(); i++) {
+-      std::optional<EncodeResult> result =
+-          encoder_->GetEncodeResult(std::move(jobs[i]));
+-      if (!result) {
+-        NotifyError({EncoderStatus::Codes::kEncoderFailedEncode,
+-                     "Failed getting encode result"});
++    auto in_flight = std::make_unique<InFlightEncode>();
++    in_flight->input_frame = input_frame.frame;
++    in_flight->jobs = std::move(jobs);
++    in_flight->input_surfaces = std::move(input_surfaces);
++    in_flight_encodes_.push(std::move(in_flight));
++    const bool hyperframes_h264_input =
++        output_codec_ == VideoCodec::kH264 &&
++        ((native_input_mode_ &&
++          input_frame.frame->format() == PIXEL_FORMAT_ABGR) ||
++         (!native_input_mode_ &&
++          input_frame.frame->format() == PIXEL_FORMAT_NV12));
++    const size_t async_depth = hyperframes_h264_input ? 4u : 1u;
++    if (in_flight_encodes_.size() >= async_depth) {
++      if (!complete_oldest_encode())
+         return;
+-      }
+-
+-      TRACE_EVENT_END("media,gpu", /*"PlatformEncoding.Encode"*/
+-                      perfetto::Track::FromPointer(&jobs[i]), "timestamp",
+-                      result->metadata().timestamp.InMicroseconds(), "size",
+-                      spatial_layer_resolutions[i].ToString());
+-
+-      pending_encode_results_.push(std::move(result));
+     }
+ 
+     // Invalidates |input_frame| here; it notifies a client |input_frame.frame|
+@@ -1182,6 +1219,7 @@ void VaapiVideoEncodeAccelerator::DestroyTask() {
+   if (vpp_vaapi_wrapper_)
+     vpp_vaapi_wrapper_->DestroyContext();
+ 
++  in_flight_encodes_ = {};
+   input_surfaces_.clear();
+ 
+   available_bitstream_buffers_ = {};
+diff --git a/media/gpu/vaapi/vaapi_video_encode_accelerator.h b/media/gpu/vaapi/vaapi_video_encode_accelerator.h
+index c8bd416dc2..8983ccb8b5 100644
+--- a/media/gpu/vaapi/vaapi_video_encode_accelerator.h
++++ b/media/gpu/vaapi/vaapi_video_encode_accelerator.h
+@@ -107,6 +107,7 @@ class MEDIA_GPU_EXPORT VaapiVideoEncodeAccelerator
+ 
+   // Holds input frames coming from the client ready to be encoded.
+   struct InputFrameRef;
++  struct InFlightEncode;
+ 
+   // Thin wrapper around a ScopedVASurface to furnish it with a ReleaseCB to do
+   // something with it upon destruction, e.g. return it to a vector or pool.
+@@ -315,6 +316,10 @@ class MEDIA_GPU_EXPORT VaapiVideoEncodeAccelerator
+   base::queue<std::optional<EncodeResult>> pending_encode_results_
+       GUARDED_BY_CONTEXT(encoder_sequence_checker_);
+ 
++  // Submitted jobs whose coded buffers have not been mapped yet.
++  base::queue<std::unique_ptr<InFlightEncode>> in_flight_encodes_
++      GUARDED_BY_CONTEXT(encoder_sequence_checker_);
++
+   // Task runner for interacting with the client, and its checker.
+   const scoped_refptr<base::SequencedTaskRunner> child_task_runner_;
+   SEQUENCE_CHECKER(child_sequence_checker_);
+diff --git a/media/gpu/vaapi/vaapi_wrapper.cc b/media/gpu/vaapi/vaapi_wrapper.cc
+index 94f8a4ad32..01e443ecf4 100644
+--- a/media/gpu/vaapi/vaapi_wrapper.cc
++++ b/media/gpu/vaapi/vaapi_wrapper.cc
+@@ -2018,7 +2018,7 @@ VaapiWrapper::GetSupportedEncodeProfiles() {
+     profile.max_resolution = profile_info->max_resolution;
+     // Maximum framerate of encoded profile. This value is an arbitrary
+     // limit and not taken from HW documentation.
+-    constexpr int kMaxEncoderFramerate = 30;
++    constexpr int kMaxEncoderFramerate = 60;
+     profile.max_framerate_numerator = kMaxEncoderFramerate;
+     profile.max_framerate_denominator = 1;
+     profile.rate_control_modes = media::VideoEncodeAccelerator::kConstantMode;
+@@ -3051,6 +3051,17 @@ bool VaapiWrapper::UploadVideoFrameToSurface(const VideoFrame& frame,
+           UNSAFE_TODO(image_ptr + image.offsets[0]), image.pitches[0],
+           UNSAFE_TODO(image_ptr + image.offsets[1]), image.pitches[1],
+           visible_size.width(), visible_size.height());
++    } else if (frame.format() == PIXEL_FORMAT_NV12) {
++      libyuv::CopyPlane(frame.data(VideoFrame::Plane::kY),
++                        frame.stride(VideoFrame::Plane::kY),
++                        UNSAFE_TODO(image_ptr + image.offsets[0]),
++                        image.pitches[0], visible_size.width(),
++                        visible_size.height());
++      libyuv::CopyPlane(frame.data(VideoFrame::Plane::kUV),
++                        frame.stride(VideoFrame::Plane::kUV),
++                        UNSAFE_TODO(image_ptr + image.offsets[1]),
++                        image.pitches[1], visible_size.width(),
++                        visible_size.height() / 2);
+     } else {
+       LOG(ERROR) << "Unsupported pixel format: "
+                  << VideoPixelFormatToString(frame.format());
+diff --git a/media/video/video_encode_accelerator_adapter.cc b/media/video/video_encode_accelerator_adapter.cc
+index 3f67a0d16b..3f23a460d9 100644
+--- a/media/video/video_encode_accelerator_adapter.cc
++++ b/media/video/video_encode_accelerator_adapter.cc
+@@ -517,12 +517,21 @@ void VideoEncodeAcceleratorAdapter::InitializeOnAcceleratorThread(
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+   // Linux/ChromeOS require a special configuration to use dmabuf storage.
+   // We need to keep sending frames with the same storage type.
+-  // Other platforms will happily mix GpuMemoryBuffer storage with shared-mem
+-  // storage, so we don't care about mismatches on other platforms.
+-  if (input_buffer_preference_ == InputBufferKind::Any) {
+-    input_buffer_preference_ = InputBufferKind::GpuMemBuf;
++  // This experiment permits Linux to use shmem when the Ozone backend cannot
++  // allocate the mappable NV12 SharedImage required by the dmabuf path.
++  if (BUILDFLAG(IS_LINUX) && base::FeatureList::IsEnabled(
++                                    kLinuxVideoEncoderUseShmemInput)) {
++    input_buffer_preference_ = InputBufferKind::CpuMemBuf;
++    storage_type = VideoEncodeAccelerator::Config::StorageType::kShmem;
++  } else {
++    // Other platforms will happily mix GpuMemoryBuffer storage with
++    // shared-mem storage, so we don't care about mismatches on those
++    // platforms.
++    if (input_buffer_preference_ == InputBufferKind::Any)
++      input_buffer_preference_ = InputBufferKind::GpuMemBuf;
++    storage_type =
++        VideoEncodeAccelerator::Config::StorageType::kGpuMemoryBuffer;
+   }
+-  storage_type = VideoEncodeAccelerator::Config::StorageType::kGpuMemoryBuffer;
+ #endif
+ 
+   auto vea_config =
+@@ -1133,8 +1142,24 @@ VideoEncodeAcceleratorAdapter::PrepareGpuFrame(
+   bool is_gpu_supported_format =
+       std::ranges::find(gpu_supported_pixel_formats_, src_frame->format()) !=
+       gpu_supported_pixel_formats_.end();
++  bool can_passthrough_gpu_frame = true;
++
++#if BUILDFLAG(IS_LINUX)
++  is_gpu_supported_format =
++      is_gpu_supported_format || src_frame->format() == PIXEL_FORMAT_ABGR;
++  // VAAPI's mappable SharedImage path requires a NativePixmap/DMA-BUF.
++  // A texture-backed WebCodecs frame may instead carry a shared-memory GMB;
++  // passing that frame through reaches CreateGpuMemoryBufferHandle() and
++  // aborts the GPU process. Force those frames through the encoder-specific
++  // NativePixmap pool below.
++  if (src_frame->HasMappableSharedImage()) {
++    can_passthrough_gpu_frame =
++        src_frame->GetGpuMemoryBufferHandle().type == gfx::NATIVE_PIXMAP;
++  }
++#endif
+ 
+-  if ((src_frame->HasMappableSharedImage() || src_frame->HasSharedImage()) &&
++  if (can_passthrough_gpu_frame &&
++      (src_frame->HasMappableSharedImage() || src_frame->HasSharedImage()) &&
+       (src_frame->format() == PIXEL_FORMAT_NV12 || is_gpu_supported_format) &&
+       (gpu_resize_supported_ || src_frame->coded_size() == dest_coded_size)) {
+     // Nothing to do here, the input frame is already what we need
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+index ce8231f02d..02af34d762 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+@@ -51,6 +51,7 @@
+ #include "services/metrics/public/cpp/ukm_recorder.h"
+ #include "services/metrics/public/cpp/ukm_source_id.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/metrics/document_update_reason.h"
+ #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -492,6 +493,21 @@ void HTMLCanvasElement::requestPaint() {
+   }
+ }
+ 
++void HTMLCanvasElement::requestSynchronousPaint() {
++  LocalFrameView* view = GetDocument().View();
++  if (!view) {
++    return;
++  }
++  // HyperFrames offline rendering has no display-vsync dependency. Force the
++  // complete Blink lifecycle to PaintClean and dispatch the canvas paint event
++  // before returning so deterministic frame capture is paced by rendering work,
++  // not by the desktop compositor refresh rate.
++  view->RequestCanvasOnpaint(*this);
++  view->UpdateAllLifecyclePhases(
++      DocumentUpdateReason::kCanvasDrawElementImage);
++  view->RunPostLifecycleSteps();
++}
++
+ void HTMLCanvasElement::SetSize(gfx::Size new_size) {
+   if (new_size == Size())
+     return;
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.h b/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
+index 2b023e1a62..7459e2e3ce 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
+@@ -121,6 +121,7 @@ class CORE_EXPORT HTMLCanvasElement final
+   bool layoutSubtree() const;
+   DEFINE_ATTRIBUTE_EVENT_LISTENER(paint, kPaint)
+   void requestPaint();
++  void requestSynchronousPaint();
+ 
+   void SetSize(gfx::Size new_size);
+ 
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.idl b/third_party/blink/renderer/core/html/canvas/html_canvas_element.idl
+index 5b999adf46..0ab942f104 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.idl
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.idl
+@@ -39,6 +39,7 @@
+     [RuntimeEnabled=CanvasDrawElement] attribute boolean layoutSubtree;
+     [RuntimeEnabled=CanvasDrawElement] attribute EventHandler onpaint;
+     [RuntimeEnabled=CanvasDrawElement] void requestPaint();
++    [RuntimeEnabled=CanvasDrawElement] void requestSynchronousPaint();
+     [RuntimeEnabled=CanvasDrawElement, RaisesException] DOMMatrix getElementTransform((Element or ElementImage) element, DOMMatrix draw_transform);
+     [RuntimeEnabled=CanvasDrawElement, RaisesException] ElementImage captureElementImage(Element element);
+ 
+diff --git a/third_party/blink/renderer/platform/graphics/web_graphics_context_3d_video_frame_pool.cc b/third_party/blink/renderer/platform/graphics/web_graphics_context_3d_video_frame_pool.cc
+index 6fad035487..5f1c5f26d5 100644
+--- a/third_party/blink/renderer/platform/graphics/web_graphics_context_3d_video_frame_pool.cc
++++ b/third_party/blink/renderer/platform/graphics/web_graphics_context_3d_video_frame_pool.cc
+@@ -20,6 +20,7 @@
+ #include "gpu/command_buffer/client/shared_image_interface.h"
+ #include "gpu/command_buffer/common/shared_image_capabilities.h"
+ #include "gpu/command_buffer/common/shared_image_usage.h"
++#include "media/base/media_switches.h"
+ #include "media/base/simple_sync_token_client.h"
+ #include "media/base/video_frame.h"
+ #include "media/renderers/video_frame_rgba_to_yuva_converter.h"
+@@ -38,6 +39,20 @@ namespace blink {
+ 
+ namespace {
+ 
++media::VideoPixelFormat GetRenderablePoolPixelFormat() {
++#if BUILDFLAG(IS_LINUX)
++  // The VAAPI shmem fallback requires a CPU-side NV12 frame. Keep Blink's
++  // upstream NV12 pool in that mode because ConvertToMemoryMappedFrame()
++  // currently wraps only YUV layouts. The native Linux path still uses ABGR
++  // so VAAPI VPP can perform the RGB-to-NV12 conversion on the GPU.
++  if (base::FeatureList::IsEnabled(
++          media::kLinuxVideoEncoderUseShmemInput)) {
++    return media::PIXEL_FORMAT_NV12;
++  }
++#endif
++  return media::PIXEL_FORMAT_ABGR;
++}
++
+ class Context
+     : public media::RenderableMappableSharedImageVideoFramePool::Context {
+  public:
+@@ -96,7 +111,9 @@ WebGraphicsContext3DVideoFramePool::WebGraphicsContext3DVideoFramePool(
+         weak_context_provider)
+     : weak_context_provider_(weak_context_provider),
+       pool_(media::RenderableMappableSharedImageVideoFramePool::Create(
+-          std::make_unique<Context>(weak_context_provider))) {}
++          std::make_unique<Context>(weak_context_provider),
++          GetRenderablePoolPixelFormat(),
++          /*requires_cpu_access=*/true)) {}
+ 
+ WebGraphicsContext3DVideoFramePool::~WebGraphicsContext3DVideoFramePool() =
+     default;
+@@ -254,6 +271,8 @@ WebGraphicsContext3DVideoFramePool::CopyRGBATextureToVideoFrame(
+ 
+   auto dst_frame = pool_->MaybeCreateVideoFrame(src_size, dst_color_space);
+   if (!dst_frame) {
++    LOG(ERROR) << "RGBA native frame pool allocation failed for "
++               << src_size.ToString();
+     return std::nullopt;
+   }
+   CHECK(dst_frame->HasSharedImage());
+@@ -263,6 +282,8 @@ WebGraphicsContext3DVideoFramePool::CopyRGBATextureToVideoFrame(
+                                          src_shared_image, acquire_sync_token,
+                                          dst_frame.get());
+   if (!completion_sync_token) {
++    LOG(ERROR) << "RGBA native frame pool CopySharedImage failed for "
++               << dst_frame->AsHumanReadableString();
+     return std::nullopt;
+   }
+ 
+diff --git a/ui/gfx/linux/gbm_wrapper.cc b/ui/gfx/linux/gbm_wrapper.cc
+index 6784382aa1..cf6cb4fdc3 100644
+--- a/ui/gfx/linux/gbm_wrapper.cc
++++ b/ui/gfx/linux/gbm_wrapper.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "ui/gfx/linux/gbm_wrapper.h"
+ 
++#include <drm_fourcc.h>
+ #include <gbm.h>
+ #include <sys/mman.h>
+ 
+@@ -342,7 +343,8 @@ class Device final : public ui::GbmDevice {
+     // to instantiate the returned GbmBuffer.
+     gfx::Size size_for_verification =
+ #if BUILDFLAG(IS_LINUX)
+-        gfx::Size(1, 1);
++        format == DRM_FORMAT_NV12 ? gfx::Size(2, 2)
++                                  : gfx::Size(1, 1);
+ #else
+         requested_size;
+ #endif
+diff --git a/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc b/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
+index 0f6c17b2f5..871ad7aa9a 100644
+--- a/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
++++ b/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
+@@ -59,6 +59,13 @@ bool GbmPixmapWayland::InitializeBuffer(
+   const uint32_t fourcc_format = GetFourCCFormatFromSharedImageFormat(format);
+   const uint32_t gbm_flags = ui::NativePixmapUsageToGbmFlags(usage);
+   auto modifiers = buffer_manager_->GetModifiersForFormat(format);
++  // Encoder-only NV12 buffers are not wl_buffers, so the compositor may not
++  // advertise their modifiers. Mesa needs the modifier-aware GBM API for
++  // multi-plane allocation even when the requested modifier is linear.
++  if (format == viz::MultiPlaneFormat::kNV12 &&
++      usage == NativePixmapBufferUsage::kGpuReadCpuReadWrite) {
++    modifiers = {DRM_FORMAT_MOD_LINEAR};
++  }
+ 
+   // Create buffer object without format modifiers unless they are explicitly
+   // advertised by the Wayland compositor, via linux-dmabuf protocol.
+diff --git a/ui/ozone/platform/wayland/gpu/wayland_surface_factory.cc b/ui/ozone/platform/wayland/gpu/wayland_surface_factory.cc
+index 2605b0e267..e93304d580 100644
+--- a/ui/ozone/platform/wayland/gpu/wayland_surface_factory.cc
++++ b/ui/ozone/platform/wayland/gpu/wayland_surface_factory.cc
+@@ -265,13 +265,28 @@ scoped_refptr<gfx::NativePixmap> WaylandSurfaceFactory::CreateNativePixmap(
+     return nullptr;
+   }
+ #if defined(WAYLAND_GBM)
++  if (usage == gfx::BufferUsage::SCANOUT ||
++      format == viz::SinglePlaneFormat::kBGRA_8888) {
++    LOG(ERROR) << "RGBA encoder CreateNativePixmap format=" << format.ToString()
++               << " usage=" << static_cast<int>(usage);
++  }
++  const bool is_video_encoder_buffer =
++      usage == gfx::BufferUsage::SCANOUT_VEA_CPU_READ ||
++      usage == gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE;
++  const bool is_rgba_encoder_buffer =
++      usage == gfx::BufferUsage::SCANOUT &&
++      format == viz::SinglePlaneFormat::kBGRA_8888;
+   auto* gbm_device = buffer_manager_->GetGbmDevice();
+-  if (gbm_device && gbm_device->CanCreateBufferForFormat(
+-                        GetFourCCFormatFromSharedImageFormat(format))) {
++  if (gbm_device &&
++      (is_video_encoder_buffer || is_rgba_encoder_buffer ||
++       gbm_device->CanCreateBufferForFormat(
++                                      GetFourCCFormatFromSharedImageFormat(format)))) {
+     scoped_refptr<GbmPixmapWayland> pixmap =
+         base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
+ 
+-    auto native_usage = BufferUsageToNativePixmapUsage(usage);
++    const auto native_usage = is_video_encoder_buffer
++                                  ? NativePixmapBufferUsage::kGpuReadCpuReadWrite
++                                  : BufferUsageToNativePixmapUsage(usage);
+     if (!pixmap->InitializeBuffer(widget, size, format, native_usage,
+                                   framebuffer_size)) {
+       return nullptr;
+diff --git a/ui/ozone/platform/wayland/ozone_platform_wayland.cc b/ui/ozone/platform/wayland/ozone_platform_wayland.cc
+index 39b1aa814c..ee1a14187a 100644
+--- a/ui/ozone/platform/wayland/ozone_platform_wayland.cc
++++ b/ui/ozone/platform/wayland/ozone_platform_wayland.cc
+@@ -194,6 +194,17 @@ class OzonePlatformWayland : public OzonePlatform,
+   bool IsNativePixmapConfigSupported(viz::SharedImageFormat format,
+                                      gfx::BufferUsage usage) const override {
+ #if defined(WAYLAND_GBM)
++    if (usage == gfx::BufferUsage::SCANOUT ||
++        format == viz::SinglePlaneFormat::kBGRA_8888) {
++      LOG(ERROR) << "RGBA encoder IsNativePixmapConfigSupported format="
++                 << format.ToString() << " usage=" << static_cast<int>(usage);
++    }
++    const bool is_video_encoder_buffer =
++        usage == gfx::BufferUsage::SCANOUT_VEA_CPU_READ ||
++        usage == gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE ||
++        (usage == gfx::BufferUsage::SCANOUT &&
++         format == viz::SinglePlaneFormat::kBGRA_8888);
++
+     // If there is no drm render node device available, native pixmaps are not
+     // supported.
+     if (path_finder_.GetDrmRenderNodePath().empty())
+@@ -203,7 +214,9 @@ class OzonePlatformWayland : public OzonePlatform,
+     // |supported_formats_| is empty. Supported shared image formats are sent
+     // to |buffer_manager_| via IPC after gpu service init in that case.
+     if (buffer_manager_) {
+-      if (!buffer_manager_->SupportsFormat(format)) {
++      // Encoder-only DMA-BUFs never become wl_buffers.
++      if (!is_video_encoder_buffer &&
++          !buffer_manager_->SupportsFormat(format)) {
+         return false;
+       }
+       // Return false here if creating buffers for certain formats is not
+@@ -211,12 +224,15 @@ class OzonePlatformWayland : public OzonePlatform,
+       // gbm_bo_create) even though |buffer_manager_| may indicate it can be
+       // imported as wl_buffer.
+       auto* gbm_device = buffer_manager_->GetGbmDevice();
+-      if (!gbm_device || !gbm_device->CanCreateBufferForFormat(
+-                             GetFourCCFormatFromSharedImageFormat(format))) {
++      if (!gbm_device ||
++          (!is_video_encoder_buffer &&
++           !gbm_device->CanCreateBufferForFormat(
++               GetFourCCFormatFromSharedImageFormat(format)))) {
+         return false;
+       }
+     } else {
+-      if (supported_formats_.find(format) == supported_formats_.end()) {
++      if (!is_video_encoder_buffer &&
++          supported_formats_.find(format) == supported_formats_.end()) {
+         return false;
+       }
+     }

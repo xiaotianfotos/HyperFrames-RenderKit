@@ -1,0 +1,45 @@
+# Electron / Chromium source and build trees are intentionally external.
+source/
+src/
+out/
+cache/
+depot_tools/
+dist/
+node_modules/
+results/
+.render-cache/
+
+# Large generated artifacts.
+*.zip
+*.mov
+*.mp4
+*.h264
+*.ivf
+*.png
+*.trace.json
+*.metrics.json
+*.frame-signatures.bin
+*.media-route.json
+*.hf-partial-*
+*.log
+
+# Credentials and local configuration.
+.env
+.env.*
+*.token
+*.secret
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.kdbx
+.npmrc
+.netrc
+credentials*.json
+service-account*.json
+
+# Editors and operating systems.
+.DS_Store
+.idea/
+.vscode/
