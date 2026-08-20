@@ -134,8 +134,11 @@ async function main(options) {
   if (!electron) throw new Error("Pass --electron=/absolute/path/to/electron or set ELECTRON_BINARY");
   const projectRoot = await mkdtemp(join(tmpdir(), "proxy-tree-electron-"));
   const runRoot = await mkdtemp(join(tmpdir(), "proxy-tree-electron-run-"));
-  const width = Number(options.width ?? 320);
-  const height = Number(options.height ?? 180);
+  // The production VAAPI encoder contract is validated at delivery-class
+  // dimensions. Some drivers intentionally reject tiny H.264 surfaces even
+  // though the 1080p/4K profiles are available.
+  const width = Number(options.width ?? 1920);
+  const height = Number(options.height ?? 1080);
   const frames = Number(options.frames ?? 3);
   try {
     const ffmpegLookup = await run("/usr/bin/which", ["ffmpeg"]);
@@ -410,7 +413,9 @@ async function main(options) {
     const leftovers = (await readdir(projectRoot)).filter((name) => name.startsWith(".hf-proxy-tree-"));
     assert.deepEqual(leftovers, [], "generated proxy entry must be removed after render");
     assert.deepEqual(await readdir(positiveRuntimeTemp), [], "generated proxy entry must be cleaned from the per-segment runtime temp");
-    assert.equal(Number(metrics.probe.streams.find((stream) => stream.codec_type === "video").nb_read_frames), frames);
+    const videoStream = metrics.probe.streams.find((stream) => stream.codec_type === "video");
+    const probedFrames = Number(videoStream.nb_read_frames ?? videoStream.nb_frames ?? videoStream.nb_read_packets);
+    assert.equal(probedFrames, frames);
 
     console.log(JSON.stringify({
       frames,
