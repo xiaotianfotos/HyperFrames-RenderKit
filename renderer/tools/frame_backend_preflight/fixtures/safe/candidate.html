@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { width: 320px; height: 180px; margin: 0; overflow: hidden; background: #08152b; }
+  #root { position: relative; width: 320px; height: 180px; overflow: hidden; background: linear-gradient(135deg, #0b1730, #173f67); }
+  #unused-media { display: none; position: absolute; inset: 0; width: 320px; height: 180px; }
+  #box { position: absolute; left: 24px; top: 48px; width: 92px; height: 64px; border-radius: 14px; background: #58d6ff; box-shadow: 0 8px 28px rgba(0, 0, 0, .32); }
+  #label { position: absolute; left: 18px; bottom: 14px; color: white; font: 700 16px sans-serif; }
+</style>
+<main id="root" data-composition-id="backend-preflight-safe" data-start="0" data-duration="0.0666666667" data-width="320" data-height="180">
+  <canvas id="unused-media" class="clip" width="320" height="180" data-hf-video-proxy="1" data-hf-video-src="source.mp4" data-start="0" data-duration="0.0666666667"></canvas>
+  <div id="box"></div>
+  <div id="label">exact proxy gate</div>
+</main>
+<script>
+  window.__hyperframesBackendPreflightCandidate = {
+    schemaVersion: 1,
+    backend: "proxy-tree",
+    gateProfileHash: "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    renderContract: "proxy-tree-webcodecs-frame-exact"
+  };
+  window.__timelines = window.__timelines || {};
+  window.__timelines.main = {
+    seek(time) {
+      const box = document.getElementById("box");
+      box.style.transform = `translateX(${Math.round(time * 600)}px)`;
+      box.style.opacity = String(0.8 + time);
+    }
+  };
+</script>

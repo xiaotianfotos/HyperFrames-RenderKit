@@ -1,0 +1,28 @@
+{
+  "name": "hyperframes-renderkit",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Deterministic HyperFrames renderer, preflight tools, and verification runtime",
+  "dependencies": {
+    "acorn": "8.18.0",
+    "acorn-walk": "8.3.5",
+    "es-module-lexer": "2.3.1",
+    "mediabunny": "1.53.0",
+    "parse5": "7.3.0",
+    "postcss": "8.5.26",
+    "postcss-value-parser": "4.2.0"
+  },
+  "scripts": {
+    "test": "npm run test:backend-segment-executor && npm run test:proxy-tree && npm run test:validate-final-mov && npm run test:golden-manifest-builder",
+    "test:backend-segment-executor": "node tools/backend_plan_consumer/test_executor.mjs",
+    "test:proxy-tree-transform": "node tools/test_proxy_tree_transformer.mjs",
+    "test:proxy-tree-static": "node tools/test_proxy_tree_backend_static.mjs",
+    "test:proxy-tree": "npm run test:proxy-tree-transform && npm run test:proxy-tree-static",
+    "test:validate-final-mov": "node tools/test_validate_final_mov.mjs",
+    "test:golden-manifest-builder": "node tools/test_build_golden_clip_manifest.mjs"
+  },
+  "devDependencies": {
+    "electron": "43.3.0"
+  }
+}

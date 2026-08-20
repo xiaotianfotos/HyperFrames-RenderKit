@@ -1,0 +1,6 @@
+{
+  "name": "hyperframes-frame-backend-preflight",
+  "private": true,
+  "type": "module",
+  "main": "electron_main.mjs"
+}

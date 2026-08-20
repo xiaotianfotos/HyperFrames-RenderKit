@@ -1,0 +1,37 @@
+#root {
+  position: relative;
+  overflow: hidden;
+}
+
+.plate {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: auto;
+}
+
+.overlay .nested-card {
+  position: relative;
+  z-index: 7;
+  opacity: 0.8;
+}
+
+.rotated {
+  position: absolute;
+  z-index: 3;
+  transform: rotate(8deg) scale(0.8);
+  filter: blur(2px);
+  border-radius: 12px 36px / 8px 24px;
+  mix-blend-mode: screen;
+}
+
+.masked {
+  position: absolute;
+  z-index: auto;
+  clip-path: polygon(0 0, 100% 0, 80% 100%, 0 100%);
+}

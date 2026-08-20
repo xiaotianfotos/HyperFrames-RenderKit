@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101b2c; }
+      [data-composition-id] { position: relative; width: 64px; height: 64px; overflow: hidden; background: linear-gradient(135deg, #17345d, #bc4c79); }
+      #moving { position: absolute; width: 18px; height: 18px; left: 4px; top: 23px; background: #54f2c2; box-shadow: 0 0 5px #fff; }
+      #detail { position: absolute; width: 9px; height: 9px; right: 8px; top: 7px; background: #ffd166; border: 2px solid #14213d; }
+    </style>
+  </head>
+  <body>
+    <main data-composition-id="frame-signature-e2e">
+      <div id="moving"></div>
+      <div id="detail"></div>
+    </main>
+    <script>
+      const moving = document.getElementById("moving");
+      const detail = document.getElementById("detail");
+      window.__timelines = {
+        main: {
+          seek(time) {
+            moving.style.transform = `translateX(${Math.round(time * 180)}px) rotate(${time * 120}deg)`;
+            detail.style.opacity = String(0.45 + 0.55 * Math.abs(Math.sin(time * 15)));
+          },
+        },
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Child Canvas Proxy / CanvasDrawElement Probe</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #080b12;
+      }
+
+      #golden-slot,
+      #capture-canvas {
+        position: absolute;
+        top: 20px;
+        width: 640px;
+        height: 480px;
+      }
+
+      #golden-slot { left: 20px; }
+
+      #capture-canvas {
+        left: 680px;
+        display: block;
+        background: #000;
+      }
+
+      .probe-root {
+        position: relative;
+        width: 640px;
+        height: 480px;
+        overflow: hidden;
+        isolation: isolate;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(72, 220, 255, 0.34), transparent 25%),
+          radial-gradient(circle at 82% 25%, rgba(255, 93, 174, 0.34), transparent 28%),
+          linear-gradient(135deg, #162644 0%, #101526 48%, #2c1731 100%);
+      }
+
+      .probe-root::before {
+        position: absolute;
+        inset: 0;
+        content: "";
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+
+      .case-label {
+        position: absolute;
+        z-index: 30;
+        left: 18px;
+        bottom: 12px;
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 999px;
+        background: rgba(4, 7, 14, 0.72);
+        color: #f5fbff;
+        font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.08em;
+      }
+
+      .proxy-transform-filter {
+        position: absolute;
+        z-index: 4;
+        top: 42px;
+        left: 42px;
+        width: 238px;
+        height: 158px;
+        transform: rotate(7deg) scale(0.94);
+        transform-origin: 50% 50%;
+        border: 4px solid rgba(255, 255, 255, 0.82);
+        border-radius: 30px 10px 42px 18px / 18px 34px 14px 28px;
+        filter: saturate(1.35) contrast(1.08) drop-shadow(0 16px 15px rgba(0, 0, 0, 0.5));
+      }
+
+      .proxy-backdrop {
+        position: absolute;
+        z-index: 6;
+        top: 56px;
+        right: 38px;
+        width: 232px;
+        height: 154px;
+        border: 2px solid rgba(255, 255, 255, 0.62);
+        border-radius: 28px;
+        background: rgba(230, 245, 255, 0.13);
+        -webkit-backdrop-filter: blur(10px) saturate(1.6);
+        backdrop-filter: blur(10px) saturate(1.6);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.38), 0 18px 38px rgba(0, 0, 0, 0.3);
+      }
+
+      .stack-zone {
+        position: absolute;
+        z-index: 8;
+        right: 42px;
+        bottom: 46px;
+        left: 42px;
+        height: 184px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 28px;
+        background: linear-gradient(100deg, rgba(12, 20, 37, 0.86), rgba(42, 18, 47, 0.8));
+        box-shadow: 0 22px 45px rgba(0, 0, 0, 0.34);
+      }
+
+      .stack-underlay {
+        position: absolute;
+        z-index: 1;
+        inset: 22px 36px;
+        border-radius: 18px;
+        background: linear-gradient(90deg, #3d6dff, #845cff 52%, #ff4f9d);
+        transform: skewX(-8deg);
+      }
+
+      .proxy-stacking {
+        position: absolute;
+        z-index: 3;
+        top: 26px;
+        left: 86px;
+        width: 356px;
+        height: 126px;
+        border-radius: 22px;
+        filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.45));
+      }
+
+      .stack-overline {
+        position: absolute;
+        z-index: 5;
+        top: 67px;
+        right: 16px;
+        width: 520px;
+        height: 34px;
+        transform: rotate(-5deg);
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        background: rgba(255, 204, 49, 0.9);
+        box-shadow: 0 7px 15px rgba(0, 0, 0, 0.36);
+      }
+
+      .stack-copy {
+        position: absolute;
+        z-index: 7;
+        top: 18px;
+        left: 24px;
+        color: white;
+        font-size: 17px;
+        font-weight: 800;
+        text-shadow: 0 2px 5px #000;
+      }
+
+      .direct-video-root {
+        background: #000;
+      }
+
+      .direct-video-root::before { display: none; }
+
+      .direct-video {
+        position: absolute;
+        inset: 20px 24px;
+        width: 592px;
+        height: 440px;
+        object-fit: cover;
+        transform: rotate(-1.5deg) scale(0.95);
+        transform-origin: 50% 50%;
+        border: 4px solid rgba(255, 255, 255, 0.85);
+        border-radius: 42px 18px 52px 28px / 24px 42px 20px 36px;
+        filter: saturate(1.25) contrast(1.08);
+        background: #000;
+      }
+
+      .source-canvas {
+        position: fixed;
+        top: -10000px;
+        left: -10000px;
+        width: 640px;
+        height: 480px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="golden-slot"></div>
+    <canvas id="capture-canvas" width="640" height="480" layoutsubtree></canvas>
+    <script src="child_canvas_proxy_probe_page.js"></script>
+  </body>
+</html>

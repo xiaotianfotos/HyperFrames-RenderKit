@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "fixture": "browser-srgb-solid-patches",
+  "width": 1280,
+  "height": 720,
+  "deviceScaleFactor": 1,
+  "fps": 60,
+  "patches": [
+    { "id": "neutral-black", "group": "neutral", "hex": "#000000", "rect": { "x": 96, "y": 98, "width": 164, "height": 64 } },
+    { "id": "neutral-dark", "group": "neutral", "hex": "#202020", "rect": { "x": 404, "y": 98, "width": 164, "height": 64 } },
+    { "id": "neutral-mid", "group": "neutral", "hex": "#808080", "rect": { "x": 712, "y": 98, "width": 164, "height": 64 } },
+    { "id": "neutral-white", "group": "neutral", "hex": "#FFFFFF", "rect": { "x": 1020, "y": 98, "width": 164, "height": 64 } },
+
+    { "id": "skin-light", "group": "skin", "hex": "#F2C9AC", "rect": { "x": 96, "y": 258, "width": 164, "height": 64 } },
+    { "id": "skin-medium", "group": "skin", "hex": "#C68642", "rect": { "x": 404, "y": 258, "width": 164, "height": 64 } },
+    { "id": "skin-deep", "group": "skin", "hex": "#8D5524", "rect": { "x": 712, "y": 258, "width": 164, "height": 64 } },
+    { "id": "skin-warm", "group": "skin", "hex": "#D99A7A", "rect": { "x": 1020, "y": 258, "width": 164, "height": 64 } },
+
+    { "id": "saturated-red", "group": "saturated", "hex": "#FF0000", "rect": { "x": 96, "y": 418, "width": 164, "height": 64 } },
+    { "id": "saturated-green", "group": "saturated", "hex": "#00FF00", "rect": { "x": 404, "y": 418, "width": 164, "height": 64 } },
+    { "id": "saturated-blue", "group": "saturated", "hex": "#0000FF", "rect": { "x": 712, "y": 418, "width": 164, "height": 64 } },
+    { "id": "saturated-cyan", "group": "saturated", "hex": "#00FFFF", "rect": { "x": 1020, "y": 418, "width": 164, "height": 64 } },
+
+    { "id": "saturated-magenta", "group": "saturated", "hex": "#FF00FF", "rect": { "x": 96, "y": 578, "width": 164, "height": 64 } },
+    { "id": "saturated-yellow", "group": "saturated", "hex": "#FFFF00", "rect": { "x": 404, "y": 578, "width": 164, "height": 64 } },
+    { "id": "saturated-orange", "group": "saturated", "hex": "#FF7A00", "rect": { "x": 712, "y": 578, "width": 164, "height": 64 } },
+    { "id": "saturated-teal", "group": "saturated", "hex": "#00A6A6", "rect": { "x": 1020, "y": 578, "width": 164, "height": 64 } }
+  ],
+  "thresholds": {
+    "browserPatchMaxChannelError": 0.25,
+    "positiveMaxPatchDeltaE76": 3.0,
+    "positiveMeanPatchDeltaE76": 1.25,
+    "positiveMaxChannelError": 7.0,
+    "positiveNeutralMaxChromaDrift": 2.5
+  }
+}

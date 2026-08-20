@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="root" data-composition-id="fixture" data-start="0" data-duration="8" data-width="1920" data-height="1080">
+      <video id="plate-a" class="clip plate" src="media/shared.mp4" data-start="0" data-duration="6" data-media-start="0" data-track-index="0" muted playsinline></video>
+      <section id="nested-context" class="clip overlay" data-start="0" data-duration="8" data-track-index="1">
+        <div class="nested-card">Nested stacking context</div>
+      </section>
+      <video id="plate-b" class="clip rotated" src="media/shared.mp4" data-start="2" data-duration="4" data-media-start="10" data-track-index="2" muted playsinline></video>
+      <video id="browser-choice" class="clip masked" data-start="6" data-duration="2" data-track-index="3" muted playsinline>
+        <source src="media/alternate.webm" type="video/webm" />
+        <source src="media/alternate.mp4" type="video/mp4" />
+      </video>
+      <div id="sub-host" class="clip" data-composition-id="fixture-sub" data-composition-src="sub/scene.html" data-start="1" data-duration="2" data-track-index="4" data-width="1920" data-height="1080"></div>
+    </main>
+    <script src="runtime.js"></script>
+  </body>
+</html>

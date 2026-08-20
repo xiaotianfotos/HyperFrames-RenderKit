@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.local/schemas/render-plan-0.1.0.json",
+  "title": "HyperFrames RenderPlan static preflight",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "generatedAt",
+    "input",
+    "summary",
+    "documents",
+    "compositions",
+    "references",
+    "mediaElements",
+    "sourceConcurrency",
+    "stacking",
+    "cssFindings",
+    "dynamicItems",
+    "inputHardBlockers",
+    "backendEligibility",
+    "decision",
+    "limitations"
+  ],
+  "properties": {
+    "$schema": { "const": "https://hyperframes.local/schemas/render-plan-0.1.0.json" },
+    "schemaVersion": { "const": "0.1.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectRoot", "entry", "entrySha256", "fps", "pathPolicy"],
+      "properties": {
+        "projectRoot": { "type": "string" },
+        "entry": { "type": "string" },
+        "entrySha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+        "pathPolicy": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "documents": { "type": "array", "items": { "$ref": "#/$defs/document" } },
+    "compositions": { "type": "array", "items": { "$ref": "#/$defs/composition" } },
+    "references": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+    "mediaElements": { "type": "array", "items": { "$ref": "#/$defs/media" } },
+    "sourceConcurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conflicts", "reusable", "laneRequirements"],
+      "properties": {
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/sourceConflict" } },
+        "reusable": { "type": "array", "items": { "$ref": "#/$defs/sourceConflict" } },
+        "laneRequirements": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "stacking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nestedContextCount"],
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/stackingItem" } },
+        "nestedContextCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cssFindings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "dynamicItems": { "type": "array", "items": { "$ref": "#/$defs/dynamic" } },
+    "inputHardBlockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+    "backendEligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ffmpeg-only", "native-tree", "layered-manual", "screenshot-fallback"],
+      "properties": {
+        "ffmpeg-only": { "$ref": "#/$defs/backend" },
+        "native-tree": { "$ref": "#/$defs/backend" },
+        "layered-manual": { "$ref": "#/$defs/backend" },
+        "screenshot-fallback": { "$ref": "#/$defs/backend" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["safeDefault", "preferredAfterProbes", "canAutoSelectFastPath", "rule"],
+      "properties": {
+        "safeDefault": { "type": ["string", "null"] },
+        "preferredAfterProbes": { "type": ["string", "null"] },
+        "canAutoSelectFastPath": { "type": "boolean" },
+        "rule": { "type": "string" }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "document": {
+      "type": "object",
+      "required": ["id", "projectRelative", "sha256", "mount", "parseIssues"],
+      "properties": {
+        "id": { "type": "string" },
+        "projectRelative": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "mount": { "type": "object" },
+        "parseIssues": { "type": "array" }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "required": ["nodeUid", "id", "document", "mount", "width", "height", "duration"],
+      "properties": {
+        "nodeUid": { "type": "string" },
+        "id": { "type": ["string", "null"] },
+        "document": { "type": ["string", "null"] },
+        "mount": { "type": ["object", "null"] },
+        "width": { "type": ["number", "null"] },
+        "height": { "type": ["number", "null"] },
+        "duration": { "type": ["number", "null"] }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["id", "kind", "relation", "raw", "ok", "category"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "relation": { "type": "string" },
+        "raw": { "type": ["string", "null"] },
+        "ok": { "type": "boolean" },
+        "category": { "type": "string" },
+        "exists": { "type": ["boolean", "null"] },
+        "projectRelative": { "type": "string" },
+        "canonicalKey": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "media": {
+      "type": "object",
+      "required": [
+        "id", "nodeUid", "element", "selectorPath", "kind", "compositionId", "document",
+        "topology", "timeline", "sourceSelection", "sourceCandidateIds", "activeSourceCandidates"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "nodeUid": { "type": "string" },
+        "element": { "type": "string" },
+        "selectorPath": { "type": "string" },
+        "kind": { "enum": ["video", "audio"] },
+        "compositionId": { "type": ["string", "null"] },
+        "document": { "type": "string" },
+        "topology": { "enum": ["top-level-composition-child", "nested-in-composition", "subcomposition-media"] },
+        "timeline": { "type": "object" },
+        "sourceSelection": { "enum": ["direct-src", "single-source", "browser-choice", "runtime-variable", "missing"] },
+        "sourceCandidateIds": { "type": "array", "items": { "type": "string" } },
+        "activeSourceCandidates": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    },
+    "sourceConflict": {
+      "type": "object",
+      "required": [
+        "canonicalSource", "leftMediaId", "rightMediaId", "overlap", "firstOutputFrame",
+        "firstOutputTime", "leftRequestedPts", "rightRequestedPts", "ptsDelta", "code"
+      ],
+      "properties": {
+        "canonicalSource": { "type": "string" },
+        "leftMediaId": { "type": "string" },
+        "rightMediaId": { "type": "string" },
+        "overlap": { "type": "object" },
+        "firstOutputFrame": { "type": "integer" },
+        "firstOutputTime": { "type": "number" },
+        "leftRequestedPts": { "type": "number" },
+        "rightRequestedPts": { "type": "number" },
+        "ptsDelta": { "type": "number" },
+        "code": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "stackingItem": {
+      "type": "object",
+      "required": [
+        "nodeUid", "element", "selectorPath", "compositionId", "scope", "depth", "zIndex",
+        "position", "createsStackingContext", "stackingReasons", "parentStackingContextUid"
+      ],
+      "properties": {
+        "nodeUid": { "type": "string" },
+        "element": { "type": "string" },
+        "selectorPath": { "type": "string" },
+        "compositionId": { "type": ["string", "null"] },
+        "scope": { "enum": ["root", "top-level", "nested"] },
+        "depth": { "type": "integer", "minimum": 0 },
+        "zIndex": { "type": "string" },
+        "position": { "type": "string" },
+        "createsStackingContext": { "type": "boolean" },
+        "stackingReasons": { "type": "array", "items": { "type": "string" } },
+        "parentStackingContextUid": { "type": ["string", "null"] }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["code", "severity", "nodeUid", "element", "selectorPath", "property", "value", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "type": "string" },
+        "nodeUid": { "type": "string" },
+        "element": { "type": "string" },
+        "selectorPath": { "type": "string" },
+        "property": { "type": "string" },
+        "value": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "dynamic": {
+      "type": "object",
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "blocker": {
+      "type": "object",
+      "required": ["code", "message", "evidence"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "evidence": {}
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "autoSelectable", "hardBlockers", "requirements", "notes"],
+      "properties": {
+        "status": { "enum": ["eligible", "conditional", "ineligible"] },
+        "autoSelectable": { "type": "boolean" },
+        "hardBlockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+        "requirements": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

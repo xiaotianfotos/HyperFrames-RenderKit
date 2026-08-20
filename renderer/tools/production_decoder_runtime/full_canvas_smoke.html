@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #07111f; }
+    [data-composition-id] {
+      position: relative; width: 320px; height: 180px; overflow: hidden;
+      background: linear-gradient(135deg, #07111f, #184f62);
+      color: white; font: 700 28px/1.2 sans-serif;
+    }
+    .card { position: absolute; inset: 30px; border: 2px solid #6fffc1; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main data-composition-id="production-decoder-smoke">
+    <div class="card">Screenshot compatibility smoke</div>
+  </main>
+  <script>
+    window.__timelines = { main: { seek(time) { document.body.dataset.time = String(time); } } };
+  </script>
+</body>
+</html>
